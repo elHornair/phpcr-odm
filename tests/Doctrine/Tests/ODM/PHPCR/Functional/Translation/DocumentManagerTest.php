@@ -119,9 +119,9 @@ class DocumentManagerTest extends PHPCRFunctionalTestCase
     public function testPersistLocale()
     {
         $this->dm->persist($this->doc);
+        $this->dm->bindTranslation($this->doc, 'en');
         $this->doc->topic = 'Ein interessantes Thema';
         $this->doc->locale = 'de';
-        $this->dm->persist($this->doc);
 
         $this->dm->flush();
         $this->dm->clear();

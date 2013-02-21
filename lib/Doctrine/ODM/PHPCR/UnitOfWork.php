@@ -1229,13 +1229,6 @@ class UnitOfWork
         if ($generator !== ClassMetadata::GENERATOR_TYPE_ASSIGNED) {
             $class->setIdentifierValue($document, $id);
         }
-
-        if ($class->localeMapping) {
-            $locale = $class->reflFields[$class->localeMapping]->getValue($document);
-            if ($locale) {
-                $this->bindTranslation($document, $locale);
-            }
-        }
     }
 
     public function refresh($document)
@@ -2525,12 +2518,19 @@ class UnitOfWork
             return;
         }
 
-        $locale = $this->getLocale($document, $metadata, false);
-        if ($locale) {
+        $locale = $this->getLocale($document, $metadata);
+
+        $oid = spl_object_hash($document);
+        // handle case for initial persisting
+        if (empty($this->documentTranslations[$oid])) {
+            $this->bindTranslation($document, $locale);
+        // handle case when locale in the mapped property changed
+        } elseif (isset($this->documentLocales[$oid]['current'])
+            && $locale !== $this->documentLocales[$oid]['current']
+        ) {
             $this->bindTranslation($document, $locale);
         }
 
-        $oid = spl_object_hash($document);
         if (!empty($this->documentTranslations[$oid])) {
             $strategy = $this->dm->getTranslationStrategy($metadata->translator);
             foreach ($this->documentTranslations[$oid] as $locale => $data) {
@@ -2696,7 +2696,7 @@ class UnitOfWork
         }
     }
 
-    private function getLocale($document, ClassMetadata $metadata, $fallback = true)
+    private function getLocale($document, ClassMetadata $metadata)
     {
         if (!$this->isDocumentTranslatable($metadata)) {
             return null;
@@ -2716,9 +2716,7 @@ class UnitOfWork
             return $this->documentLocales[$oid]['current'];
         }
 
-        if ($fallback) {
-            return $this->dm->getLocaleChooserStrategy()->getLocale();
-        }
+        return $this->dm->getLocaleChooserStrategy()->getLocale();
     }
 
     /**
