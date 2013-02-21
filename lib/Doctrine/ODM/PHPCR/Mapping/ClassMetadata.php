@@ -44,11 +44,12 @@ class ClassMetadata implements ClassMetadataInterface
     const MANY_TO_MANY = 8;
 
     const CASCADE_PERSIST = 1;
-    const CASCADE_REMOVE  = 2;
-    const CASCADE_MERGE   = 4;
-    const CASCADE_DETACH  = 8;
+    const CASCADE_REMOVE = 2;
+    const CASCADE_MERGE = 4;
+    const CASCADE_DETACH = 8;
     const CASCADE_REFRESH = 16;
-    const CASCADE_ALL     = 31;
+    const CASCADE_TRANSLATION = 32;
+    const CASCADE_ALL = 255;
 
     /**
      * means no strategy has been set so far.

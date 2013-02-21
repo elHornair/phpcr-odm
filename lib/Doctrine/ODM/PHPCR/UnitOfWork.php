@@ -2591,13 +2591,13 @@ class UnitOfWork
 
         if ($metadata->parentMapping) {
             $parent = $metadata->reflFields[$metadata->parentMapping]->getValue($document);
-            $this->cascadeDoLoadTranslation($parent, $locale);
+            $this->cascadeDoLoadTranslation($parent, $metadata->mappings[$metadata->parentMapping], $locale);
         }
 
         if ($metadata->childMappings) {
             foreach ($metadata->childMappings as $fieldName) {
                 $child = $metadata->reflFields[$fieldName]->getValue($document);
-                $this->cascadeDoLoadTranslation($child, $locale);
+                $this->cascadeDoLoadTranslation($child, $metadata->mappings[$fieldName], $locale);
             }
         }
 
@@ -2609,10 +2609,10 @@ class UnitOfWork
                 } else {
                     if ($reference instanceOf \Traversable || is_array($reference)) {
                         foreach ($reference as $ref) {
-                            $this->cascadeDoLoadTranslation($ref, $locale);
+                            $this->cascadeDoLoadTranslation($ref, $metadata->mappings[$fieldName], $locale);
                         }
                     } else {
-                        $this->cascadeDoLoadTranslation($reference, $locale);
+                        $this->cascadeDoLoadTranslation($reference, $metadata->mappings[$fieldName], $locale);
                     }
                 }
             }
@@ -2621,14 +2621,14 @@ class UnitOfWork
         if ($metadata->referrersMappings) {
             foreach ($metadata->referrersMappings as $fieldName) {
                 $referrer = $metadata->reflFields[$fieldName]->getValue($document);
-                $this->cascadeDoLoadTranslation($referrer, $locale);
+                $this->cascadeDoLoadTranslation($referrer, $metadata->mappings[$fieldName], $locale);
             }
         }
     }
 
-    private function cascadeDoLoadTranslation($document, $locale)
+    private function cascadeDoLoadTranslation($document, $mapping, $locale)
     {
-        if (!$document) {
+        if (!$document || !$mapping['cascade'] & ClassMetadata::CASCADE_TRANSLATION) {
             return;
         }
 
