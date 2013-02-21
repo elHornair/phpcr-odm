@@ -2397,14 +2397,22 @@ class UnitOfWork
             $referrerPropertiesH = $node->getReferences($name);
         }
 
+        $metadata = $this->dm->getClassMetadata(get_class($document));
+        $locale = $this->getLocale($document, $metadata);
+        $referrerHints = array();
+        if (!is_null($locale)) {
+            $referrerHints['locale'] = $locale;
+            $referrerHints['fallback'] = true; // if we set locale explicitly this is no longer automatically done
+        }
+
         foreach ($referrerPropertiesW as $referrerProperty) {
             $referrerNode = $referrerProperty->getParent();
-            $referrerDocuments[] = $this->createDocument(null, $referrerNode);
+            $referrerDocuments[] = $this->createDocument(null, $referrerNode, $referrerHints);
         }
 
         foreach ($referrerPropertiesH as $referrerProperty) {
             $referrerNode = $referrerProperty->getParent();
-            $referrerDocuments[] = $this->createDocument(null, $referrerNode);
+            $referrerDocuments[] = $this->createDocument(null, $referrerNode, $referrerHints);
         }
 
         return new ArrayCollection($referrerDocuments);
@@ -2615,13 +2623,6 @@ class UnitOfWork
                         $this->cascadeDoLoadTranslation($reference, $metadata->mappings[$fieldName], $locale);
                     }
                 }
-            }
-        }
-
-        if ($metadata->referrersMappings) {
-            foreach ($metadata->referrersMappings as $fieldName) {
-                $referrer = $metadata->reflFields[$fieldName]->getValue($document);
-                $this->cascadeDoLoadTranslation($referrer, $metadata->mappings[$fieldName], $locale);
             }
         }
     }
