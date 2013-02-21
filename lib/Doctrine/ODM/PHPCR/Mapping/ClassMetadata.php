@@ -585,7 +585,7 @@ class ClassMetadata implements ClassMetadataInterface
     public function mapParentDocument(array $mapping, ClassMetadata $inherited = null)
     {
         if (empty($mapping['cascade'])) {
-            $mapping['cascade'] = null;
+            $mapping['cascade'] = 0;
         }
         $mapping['type'] = 'parent';
         $this->validateAndCompleteFieldMapping($mapping, $inherited, false);
@@ -598,7 +598,7 @@ class ClassMetadata implements ClassMetadataInterface
     public function mapChild(array $mapping, ClassMetadata $inherited = null)
     {
         if (empty($mapping['cascade'])) {
-            $mapping['cascade'] = null;
+            $mapping['cascade'] = 0;
         }
         $mapping['type'] = 'child';
         $mapping = $this->validateAndCompleteFieldMapping($mapping, $inherited, false);
@@ -608,7 +608,7 @@ class ClassMetadata implements ClassMetadataInterface
     public function mapChildren(array $mapping, ClassMetadata $inherited = null)
     {
         if (empty($mapping['cascade'])) {
-            $mapping['cascade'] = null;
+            $mapping['cascade'] = 0;
         }
         $mapping['type'] = 'children';
         $mapping = $this->validateAndCompleteFieldMapping($mapping, $inherited, false);
@@ -622,7 +622,7 @@ class ClassMetadata implements ClassMetadataInterface
         }
 
         if (empty($mapping['cascade'])) {
-            $mapping['cascade'] = null;
+            $mapping['cascade'] = 0;
         }
         $mapping['type'] = 'referrers';
         $mapping = $this->validateAndCompleteFieldMapping($mapping, $inherited, false);
@@ -734,7 +734,7 @@ class ClassMetadata implements ClassMetadataInterface
             throw new MappingException("The attribute 'strategy' for the '" . $this->name . "' association has to be either a null, 'weak', 'hard' or 'path': ".$mapping['strategy']);
         }
         if (empty($mapping['cascade'])) {
-            $mapping['cascade'] = null;
+            $mapping['cascade'] = 0;
         }
         $this->mappings[$mapping['fieldName']] = $mapping;
 

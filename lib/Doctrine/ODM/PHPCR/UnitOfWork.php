@@ -567,25 +567,27 @@ class UnitOfWork
     {
         foreach ($class->referenceMappings as $fieldName) {
             $mapping = $class->mappings[$fieldName];
-            if ($mapping['cascade'] & ClassMetadata::CASCADE_PERSIST) {
-                $related = $class->reflFields[$fieldName]->getValue($document);
-                if ($related !== null) {
-                    if (ClassMetadata::MANY_TO_ONE === $mapping['type']) {
-                        if (is_array($related) || $related instanceof Collection) {
-                            throw new PHPCRException('Referenced document is not stored correctly in a reference-one property. Do not use array notation or a (ReferenceMany)Collection: '.self::objToStr($document, $this->dm));
-                        }
+            if (!($mapping['cascade'] & ClassMetadata::CASCADE_PERSIST)) {
+                continue;
+            }
 
-                        if ($this->getDocumentState($related) === self::STATE_NEW) {
-                            $this->doScheduleInsert($related, $visited);
-                        }
-                    } else {
-                        if (!is_array($related) && !$related instanceof Collection) {
-                            throw new PHPCRException('Referenced document is not stored correctly in a reference-many property. Use array notation or a (ReferenceMany)Collection: '.self::objToStr($document, $this->dm));
-                        }
-                        foreach ($related as $relatedDocument) {
-                            if (isset($relatedDocument) && $this->getDocumentState($relatedDocument) === self::STATE_NEW) {
-                                $this->doScheduleInsert($relatedDocument, $visited);
-                            }
+            $related = $class->reflFields[$fieldName]->getValue($document);
+            if ($related !== null) {
+                if (ClassMetadata::MANY_TO_ONE === $mapping['type']) {
+                    if (is_array($related) || $related instanceof Collection) {
+                        throw new PHPCRException('Referenced document is not stored correctly in a reference-one property. Do not use array notation or a (ReferenceMany)Collection: '.self::objToStr($document, $this->dm));
+                    }
+
+                    if ($this->getDocumentState($related) === self::STATE_NEW) {
+                        $this->doScheduleInsert($related, $visited);
+                    }
+                } else {
+                    if (!is_array($related) && !$related instanceof Collection) {
+                        throw new PHPCRException('Referenced document is not stored correctly in a reference-many property. Use array notation or a (ReferenceMany)Collection: '.self::objToStr($document, $this->dm));
+                    }
+                    foreach ($related as $relatedDocument) {
+                        if (isset($relatedDocument) && $this->getDocumentState($relatedDocument) === self::STATE_NEW) {
+                            $this->doScheduleInsert($relatedDocument, $visited);
                         }
                     }
                 }
@@ -728,16 +730,18 @@ class UnitOfWork
     {
         foreach ($class->referenceMappings as $fieldName) {
             $mapping = $class->mappings[$fieldName];
-            if ($mapping['cascade'] & ClassMetadata::CASCADE_REMOVE) {
-                $related = $class->reflFields[$fieldName]->getValue($document);
-                if ($related instanceof Collection || is_array($related)) {
-                    // If its a PersistentCollection initialization is intended! No unwrap!
-                    foreach ($related as $relatedDocument) {
-                        $this->doRemove($relatedDocument, $visited);
-                    }
-                } elseif ($related !== null) {
-                    $this->doRemove($related, $visited);
+            if (!($mapping['cascade'] & ClassMetadata::CASCADE_REMOVE)) {
+                continue;
+            }
+
+            $related = $class->reflFields[$fieldName]->getValue($document);
+            if ($related instanceof Collection || is_array($related)) {
+                // If its a PersistentCollection initialization is intended! No unwrap!
+                foreach ($related as $relatedDocument) {
+                    $this->doRemove($relatedDocument, $visited);
                 }
+            } elseif ($related !== null) {
+                $this->doRemove($related, $visited);
             }
         }
     }
@@ -1270,7 +1274,7 @@ class UnitOfWork
     {
         if (null === $document) {
             $prop->setValue($managedCopy, null);
-        } elseif ($mapping['cascade'] & ClassMetadata::CASCADE_MERGE == 0) {
+        } elseif (!($mapping['cascade'] & ClassMetadata::CASCADE_MERGE)) {
             if ($this->getDocumentState($document) == self::STATE_MANAGED) {
                 $prop->setValue($managedCopy, $document);
             } else {
@@ -1285,17 +1289,17 @@ class UnitOfWork
 
     private function cascadeMergeCollection($managedCol, array $mapping)
     {
-        if (!$managedCol instanceof PersistentCollection) {
+        if (!$managedCol instanceof PersistentCollection
+            || !($mapping['cascade'] & ClassMetadata::CASCADE_MERGE)
+        ) {
             return;
         }
 
-        if ($mapping['cascade'] & ClassMetadata::CASCADE_MERGE > 0) {
-            $managedCol->initialize();
-            if (!$managedCol->isEmpty()) {
-                // clear managed collection, in casacadeMerge() the collection is filled again.
-                $managedCol->unwrap()->clear();
-                $managedCol->setDirty(true);
-            }
+        $managedCol->initialize();
+        if (!$managedCol->isEmpty()) {
+            // clear managed collection, in casacadeMerge() the collection is filled again.
+            $managedCol->unwrap()->clear();
+            $managedCol->setDirty(true);
         }
     }
 
@@ -1451,7 +1455,7 @@ class UnitOfWork
     {
         foreach ($class->referenceMappings as $fieldName) {
             $mapping = $class->mappings[$fieldName];
-            if ($mapping['cascade'] & ClassMetadata::CASCADE_MERGE == 0) {
+            if (!($mapping['cascade'] & ClassMetadata::CASCADE_MERGE)) {
                 continue;
             }
             $related = $class->reflFields[$fieldName]->getValue($document);
@@ -1514,19 +1518,21 @@ class UnitOfWork
     {
         foreach ($class->referenceMappings as $fieldName) {
             $mapping = $class->mappings[$fieldName];
-            if ($mapping['cascade'] & ClassMetadata::CASCADE_REFRESH) {
-                $related = $class->reflFields[$fieldName]->getValue($document);
-                if ($related instanceof Collection || is_array($related)) {
-                    if ($related instanceof PersistentCollection) {
-                        // Unwrap so that foreach() does not initialize
-                        $related = $related->unwrap();
-                    }
-                    foreach ($related as $relatedDocument) {
-                        $this->doRefresh($relatedDocument, $visited);
-                    }
-                } elseif ($related !== null) {
-                    $this->doRefresh($related, $visited);
+            if (!($mapping['cascade'] & ClassMetadata::CASCADE_REFRESH)) {
+                continue;
+            }
+
+            $related = $class->reflFields[$fieldName]->getValue($document);
+            if ($related instanceof Collection || is_array($related)) {
+                if ($related instanceof PersistentCollection) {
+                    // Unwrap so that foreach() does not initialize
+                    $related = $related->unwrap();
                 }
+                foreach ($related as $relatedDocument) {
+                    $this->doRefresh($relatedDocument, $visited);
+                }
+            } elseif ($related !== null) {
+                $this->doRefresh($related, $visited);
             }
         }
     }
@@ -1541,7 +1547,7 @@ class UnitOfWork
     {
         foreach ($class->childrenMappings as $fieldName) {
             $mapping = $class->mappings[$fieldName];
-            if ($mapping['cascade'] & ClassMetadata::CASCADE_DETACH == 0) {
+            if (!($mapping['cascade'] & ClassMetadata::CASCADE_DETACH)) {
                 continue;
             }
             $related = $class->reflFields[$fieldName]->getValue($document);
@@ -1556,7 +1562,7 @@ class UnitOfWork
 
         foreach ($class->referrersMappings as $fieldName) {
             $mapping = $class->mappings[$fieldName];
-            if ($mapping['cascade'] & ClassMetadata::CASCADE_DETACH == 0) {
+            if (!($mapping['cascade'] & ClassMetadata::CASCADE_DETACH)) {
                 continue;
             }
             $related = $class->reflFields[$fieldName]->getValue($document);
@@ -2572,13 +2578,14 @@ class UnitOfWork
         $locale = $locale ?: $currentLocale;
         if ($locale && $strategy->loadTranslation($document, $node, $metadata, $locale)) {
             $localeUsed = $locale;
-        } else {
-            $localesToTry = array();
-            if ($fallback) {
-                $localesToTry = $this->getFallbackLocales($document, $metadata, $locale);
-            } elseif (empty($locale)) {
-                $localesToTry = array($this->dm->getLocaleChooserStrategy()->getDefaultLocale());
+        } elseif (!$fallback) {
+            $localeUsed = $this->dm->getLocaleChooserStrategy()->getDefaultLocale();
+            if (!$strategy->loadTranslation($document, $node, $metadata, $localeUsed)) {
+                $msg = "No translation for at '{$node->getPath()}' found with strategy '{$metadata->translator} using the default locale '$localeUsed'.";
+                throw new MissingTranslationException($msg);
             }
+        } else {
+            $localesToTry = $this->dm->getLocaleChooserStrategy()->getPreferredLocalesOrder($document, $metadata, $locale);
 
             foreach ($localesToTry as $desiredLocale) {
                 if ($desiredLocale === $locale
@@ -2588,11 +2595,14 @@ class UnitOfWork
                     break;
                 }
             }
-        }
 
-        if (empty($localeUsed)) {
-            // We tried each possible language without finding the translations
-            throw new MissingTranslationException('No translation for '.$node->getPath()." found with strategy '".$metadata->translator.'". Tried the following locales: '.var_export($localesToTry, true));
+            if (empty($localeUsed)) {
+                $msg = "No translation for locale '$locale' at '{$node->getPath()}' found with strategy '{$metadata->translator}.";
+                if (!empty($localesToTry)) {
+                    $msg.= " Tried the following additional locales: ".var_export($localesToTry, true);
+                }
+                throw new MissingTranslationException($msg);
+            }
         }
 
         $this->setLocale($document, $metadata, $localeUsed);
@@ -2629,7 +2639,7 @@ class UnitOfWork
 
     private function cascadeDoLoadTranslation($document, $mapping, $locale)
     {
-        if (!$document || !$mapping['cascade'] & ClassMetadata::CASCADE_TRANSLATION) {
+        if (!$document || !($mapping['cascade'] & ClassMetadata::CASCADE_TRANSLATION)) {
             return;
         }
 
@@ -2717,22 +2727,6 @@ class UnitOfWork
         }
 
         return $this->dm->getLocaleChooserStrategy()->getLocale();
-    }
-
-    /**
-     * Use the LocaleStrategyChooser to return list of fallback locales
-     *
-     * @param object        $document The document object
-     * @param ClassMetadata $metadata The metadata of the document class
-     * @param $desiredLocale
-     *
-     * @return array
-     */
-    private function getFallbackLocales($document, ClassMetadata $metadata, $desiredLocale)
-    {
-        $strategy = $this->dm->getLocaleChooserStrategy();
-
-        return $strategy->getPreferredLocalesOrder($document, $metadata, $desiredLocale);
     }
 
     /**
