@@ -31,14 +31,13 @@ class ReferenceManyCollection extends PersistentCollection
 {
     private $referencedNodes;
     private $targetDocument;
-    private $locale;
 
     /**
      * Creates a new persistent collection.
      *
      * @param DocumentManager $dm              The DocumentManager the collection will be associated with.
      * @param array           $referencedNodes An array of referenced nodes (UUID or path)
-     * @param string          $targetDocument  The objectname of the target documents
+     * @param string          $targetDocument  The class name of the target documents
      * @param string          $locale          The locale to use during the loading of this collection
      */
     public function __construct(DocumentManager $dm, array $referencedNodes, $targetDocument, $locale = null)
@@ -89,14 +88,5 @@ class ReferenceManyCollection extends PersistentCollection
     public function isEmpty()
     {
         return !$this->count();
-    }
-
-    public function setLocale($locale)
-    {
-        if (null === $this->locale) {
-            return;
-        }
-
-        $this->locale = $locale;
     }
 }

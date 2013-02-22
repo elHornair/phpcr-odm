@@ -442,6 +442,11 @@ class UnitOfWork
 
         // check if referenced document already exists
         if ($document) {
+            $metadata = $this->dm->getClassMetadata($className);
+            if ($locale && $locale !== $this->getLocale($document, $metadata)) {
+                $this->doLoadTranslation($document, $metadata, $locale, true);
+            }
+
             return $document;
         }
 
@@ -2329,34 +2334,23 @@ class UnitOfWork
      * @param object       $document           document instance which children should be loaded
      * @param string|array $filter             optional filter to filter on children's names
      * @param integer      $fetchDepth         optional fetch depth if supported by the PHPCR session
-     * @param boolean      $ignoreUntranslated if to ignore children that are not translated to the current locale
+     * @param string       $locale             the locale to use during the loading of this collection
      *
-     * @return Collection a collection of child documents
+     * @return ArrayCollection a collection of child documents
      */
-    public function getChildren($document, $filter = null, $fetchDepth = null, $ignoreUntranslated = true)
+    public function getChildren($document, $filter = null, $fetchDepth = null, $locale = null)
     {
         $oldFetchDepth = $this->setFetchDepth($fetchDepth);
         $node = $this->session->getNode($this->getDocumentId($document));
         $this->setFetchDepth($oldFetchDepth);
 
         $metadata = $this->dm->getClassMetadata(get_class($document));
-        $locale = $this->getLocale($document, $metadata);
-        $childrenHints = array();
-        if (!is_null($locale)) {
-            $childrenHints['locale'] = $locale;
-            $childrenHints['fallback'] = true; // if we set locale explicitly this is no longer automatically done
-        }
+        $locale = $locale ?: $this->getLocale($document, $metadata);
 
         $childNodes = $node->getNodes($filter);
         $childDocuments = array();
         foreach ($childNodes as $name => $childNode) {
-            try {
-                $childDocuments[$name] = $this->createDocument(null, $childNode, $childrenHints);
-            } catch (MissingTranslationException $e) {
-                if (!$ignoreUntranslated) {
-                    throw $e;
-                }
-            }
+            $childDocuments[$name] = $this->createProxyFromNode($childNode, $locale);
         }
 
         return new ArrayCollection($childDocuments);
@@ -2376,10 +2370,11 @@ class UnitOfWork
      *      have ('weak' or 'hard')
      * @param string $name     optional name to match on referrers reference
      *      property name
+     * @param string       $locale             the locale to use during the loading of this collection
      *
      * @return ArrayCollection a collection of referrer documents
      */
-    public function getReferrers($document, $type = null, $name = null)
+    public function getReferrers($document, $type = null, $name = null, $locale = null)
     {
         $node = $this->session->getNode($this->getDocumentId($document));
 
@@ -2397,21 +2392,16 @@ class UnitOfWork
         }
 
         $metadata = $this->dm->getClassMetadata(get_class($document));
-        $locale = $this->getLocale($document, $metadata);
-        $referrerHints = array();
-        if (!is_null($locale)) {
-            $referrerHints['locale'] = $locale;
-            $referrerHints['fallback'] = true; // if we set locale explicitly this is no longer automatically done
-        }
+        $locale = $locale ?: $this->getLocale($document, $metadata);
 
         foreach ($referrerPropertiesW as $referrerProperty) {
             $referrerNode = $referrerProperty->getParent();
-            $referrerDocuments[] = $this->createDocument(null, $referrerNode, $referrerHints);
+            $referrerDocuments[] = $this->createProxyFromNode($referrerNode, $locale);
         }
 
         foreach ($referrerPropertiesH as $referrerProperty) {
             $referrerNode = $referrerProperty->getParent();
-            $referrerDocuments[] = $this->createDocument(null, $referrerNode, $referrerHints);
+            $referrerDocuments[] = $this->createProxyFromNode($referrerNode, $locale);
         }
 
         return new ArrayCollection($referrerDocuments);
@@ -2581,7 +2571,7 @@ class UnitOfWork
         } elseif (!$fallback) {
             $localeUsed = $this->dm->getLocaleChooserStrategy()->getDefaultLocale();
             if (!$strategy->loadTranslation($document, $node, $metadata, $localeUsed)) {
-                $msg = "No translation for at '{$node->getPath()}' found with strategy '{$metadata->translator} using the default locale '$localeUsed'.";
+                $msg = "No translation at '{$node->getPath()}' found with strategy '{$metadata->translator} using the default locale '$localeUsed'.";
                 throw new MissingTranslationException($msg);
             }
         } else {
@@ -2619,6 +2609,19 @@ class UnitOfWork
             }
         }
 
+        if ($metadata->childrenMappings) {
+            foreach ($metadata->childrenMappings as $fieldName) {
+                $children = $metadata->reflFields[$fieldName]->getValue($document);
+                if ($children instanceof ChildrenCollection && !$children->isInitialized()) {
+                    $children->setLocale($locale);
+                } elseif (!empty($children)) {
+                    foreach ($children as $child) {
+                        $this->cascadeDoLoadTranslation($child, $metadata->mappings[$fieldName], $locale);
+                    }
+                }
+            }
+        }
+
         if ($metadata->referenceMappings) {
             foreach ($metadata->referenceMappings as $fieldName) {
                 $reference = $metadata->reflFields[$fieldName]->getValue($document);
@@ -2631,6 +2634,19 @@ class UnitOfWork
                         }
                     } else {
                         $this->cascadeDoLoadTranslation($reference, $metadata->mappings[$fieldName], $locale);
+                    }
+                }
+            }
+        }
+
+        if ($metadata->referrersMappings) {
+            foreach ($metadata->referrersMappings as $fieldName) {
+                $referrers = $metadata->reflFields[$fieldName]->getValue($document);
+                if ($referrers instanceof ReferrersCollection && !$referrers->isInitialized()) {
+                    $referrers->setLocale($locale);
+                } elseif (!empty($referrers)) {
+                    foreach ($referrers as $referrer) {
+                        $this->cascadeDoLoadTranslation($referrer, $metadata->mappings[$fieldName], $locale);
                     }
                 }
             }

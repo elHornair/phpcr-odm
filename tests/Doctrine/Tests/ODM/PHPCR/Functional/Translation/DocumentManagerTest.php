@@ -7,12 +7,11 @@ use Doctrine\Tests\Models\Translation\Article,
     Doctrine\Tests\Models\Translation\InvalidMapping,
     Doctrine\Tests\Models\Translation\DerivedArticle,
     Doctrine\Tests\Models\CMS\CmsArticle,
-    Doctrine\Tests\ODM\PHPCR\PHPCRFunctionalTestCase,
-    Doctrine\Tests\Models\References\RefCascadeTestObj;
+    Doctrine\Tests\ODM\PHPCR\PHPCRFunctionalTestCase;
 
 use Doctrine\ODM\PHPCR\Translation\TranslationStrategy\AttributeTranslationStrategy,
-    Doctrine\ODM\PHPCR\Translation\LocaleChooser\LocaleChooser,
-    Doctrine\ODM\PHPCR\Mapping\ClassMetadata;
+    Doctrine\ODM\PHPCR\Translation\LocaleChooser\LocaleChooser;
+
 
 class DocumentManagerTest extends PHPCRFunctionalTestCase
 {
@@ -113,34 +112,6 @@ class DocumentManagerTest extends PHPCRFunctionalTestCase
         $this->assertEquals('en', $this->doc->locale);
     }
 
-    /**
-     * persist a new document twice in 2 languages
-     */
-    public function testPersistLocale()
-    {
-        $this->dm->persist($this->doc);
-        $this->dm->bindTranslation($this->doc, 'en');
-        $this->doc->topic = 'Ein interessantes Thema';
-        $this->doc->locale = 'de';
-
-        $this->dm->flush();
-        $this->dm->clear();
-
-        $this->assertTrue($this->dm->getPhpcrSession()->nodeExists($this->doc->id));
-        $this->assertTrue($this->dm->getPhpcrSession()->propertyExists($this->doc->id . '/phpcr_locale:de-topic'));
-        $this->assertTrue($this->dm->getPhpcrSession()->propertyExists($this->doc->id . '/phpcr_locale:en-topic'));
-
-        $article = $this->dm->find(null, $this->doc->id);
-        $this->assertEquals('en', $article->locale);
-        $this->assertEquals('Some interesting subject', $article->topic);
-
-        $this->dm->clear();
-
-        $article = $this->dm->findTranslation(null, $this->doc->id, 'de');
-        $this->assertEquals('de', $article->locale);
-        $this->assertEquals('Ein interessantes Thema', $article->topic);
-    }
-
     public function testBindTranslation()
     {
         $this->dm->persist($this->doc);
@@ -193,70 +164,6 @@ class DocumentManagerTest extends PHPCRFunctionalTestCase
         } catch (\RuntimeException $e) {
 
         }
-    }
-
-    public function testRemoveTranslationFromProxy()
-    {
-        $this->dm->persist($this->doc);
-        $this->dm->bindTranslation($this->doc, 'en');
-        $this->doc->topic = 'Un sujet intéressant';
-        $this->dm->bindTranslation($this->doc, 'fr');
-
-        $child = new Article();
-        $child->id = $this->doc->id.'/child';
-        $child->author = 'John Doe';
-        $child->topic = 'Some interesting subject';
-        $child->setText('Lorem ipsum...');
-        $child->setSettings(array());
-        $this->dm->persist($child);
-        $this->dm->flush();
-        $this->dm->clear();
-
-        $child = $this->dm->findTranslation(null, $child->id, 'fr');
-        $this->assertInstanceOf('Doctrine\ODM\PHPCR\Proxy\Proxy', $child->parent);
-        $this->dm->removeTranslation($child->parent, 'en');
-        $this->assertEquals(array('fr'), $this->dm->getLocalesFor($child->parent));
-
-        $this->dm->flush();
-        $this->dm->clear();
-
-        $child = $this->dm->findTranslation(null, $child->id, 'fr');
-        $this->assertEquals(array('fr'), $this->dm->getLocalesFor($child->parent));
-    }
-
-    /**
-     * Existing document with only 'de' translation. Default language is 'en'
-     *
-     * Create a new nontranslated document, assign existing document as
-     * reference and persist and flush new document.
-     */
-    public function testCascadeAndLocale()
-    {
-        $this->doc->topic = 'Ein interessantes Thema';
-        $this->doc->locale = 'de';
-        $this->dm->persist($this->doc);
-
-        $this->dm->flush();
-        $this->dm->clear();
-
-        $this->assertTrue($this->dm->getPhpcrSession()->nodeExists($this->doc->id));
-        $this->assertTrue($this->dm->getPhpcrSession()->propertyExists($this->doc->id . '/phpcr_locale:de-topic'));
-        $this->assertFalse($this->dm->getPhpcrSession()->propertyExists($this->doc->id . '/phpcr_locale:en-topic'));
-
-        $article = $this->dm->find(null, $this->doc->id);
-        $this->assertEquals('de', $article->locale);
-        $this->assertEquals('Ein interessantes Thema', $article->topic);
-
-        $ref = new RefCascadeTestObj();
-        $ref->id = '/functional/testCascadeAndLocale';
-        $ref->reference = $article;
-        $this->dm->persist($ref);
-        $this->dm->flush();
-        $this->dm->clear();
-
-        $this->assertTrue($this->dm->getPhpcrSession()->nodeExists($this->doc->id));
-        $this->assertTrue($this->dm->getPhpcrSession()->propertyExists($this->doc->id . '/phpcr_locale:de-topic'));
-        $this->assertFalse($this->dm->getPhpcrSession()->propertyExists($this->doc->id . '/phpcr_locale:en-topic'));
     }
 
     /**
@@ -354,8 +261,6 @@ class DocumentManagerTest extends PHPCRFunctionalTestCase
     {
         $this->dm->persist($this->doc);
         $this->dm->bindTranslation($this->doc, 'en');
-        $this->doc->topic = 'Un autre sujet';
-        $this->dm->bindTranslation($this->doc, 'fr');
 
         $comment = new Comment();
         $comment->name = 'new-comment';
@@ -367,7 +272,18 @@ class DocumentManagerTest extends PHPCRFunctionalTestCase
         $comment->setText('Très bon article');
         $this->dm->bindTranslation($comment, 'fr');
         $this->dm->flush();
-        $this->dm->clear();
+
+        $doc = $this->dm->findTranslation($this->class, '/functional/' . $this->testNodeName, 'fr');
+        $this->assertEquals('en', $doc->locale);
+        $children = $doc->getChildren();
+        foreach ($children as $comment) {
+            $this->assertEquals('fr', $comment->locale);
+            $this->assertEquals('Très bon article', $comment->getText());
+        }
+
+        $this->doc->topic = 'Un autre sujet';
+        $this->dm->bindTranslation($this->doc, 'fr');
+        $this->dm->flush();
 
         $doc = $this->dm->findTranslation($this->class, '/functional/' . $this->testNodeName, 'fr');
         $this->assertEquals('fr', $doc->locale);
@@ -386,48 +302,6 @@ class DocumentManagerTest extends PHPCRFunctionalTestCase
         $this->assertEquals('en', $doc->locale);
         $children = $doc->getChildren();
         foreach ($children as $comment) {
-            $this->assertEquals('fr', $comment->locale);
-            $this->assertEquals('Très bon article', $comment->getText());
-        }
-        $children = $this->dm->getChildren($doc);
-        foreach ($children as $comment) {
-            $this->assertEquals('en', $comment->locale);
-            $this->assertEquals('This is a great article', $comment->getText());
-        }
-
-        $this->dm->clear();
-
-        $parent = $this->dm->findTranslation($this->class, '/functional/' . $this->testNodeName, 'en');
-        $this->dm->findTranslation(null, '/functional/' . $this->testNodeName . '/new-comment', 'fr');
-        $this->assertEquals('en', $parent->locale);
-    }
-
-    public function testFindTranslationWithCascade()
-    {
-        $this->dm->persist($this->doc);
-        $this->dm->bindTranslation($this->doc, 'en');
-        $this->doc->topic = 'Un autre sujet';
-        $this->dm->bindTranslation($this->doc, 'fr');
-
-        $comment = new Comment();
-        $comment->name = 'new-comment';
-        $comment->parent = $this->doc;
-        $this->dm->persist($comment);
-
-        $comment->setText('This is a great article');
-        $this->dm->bindTranslation($comment, 'en');
-        $comment->setText('Très bon article');
-        $this->dm->bindTranslation($comment, 'fr');
-        $this->dm->flush();
-        $this->dm->clear();
-
-        $metadata = $this->dm->getClassMetadata('Doctrine\Tests\Models\Translation\Article');
-        $metadata->mappings['children']['cascade'] = ClassMetadata::CASCADE_TRANSLATION;
-
-        $doc = $this->dm->findTranslation($this->class, '/functional/' . $this->testNodeName, 'en');
-        $this->assertEquals('en', $doc->locale);
-        $children = $doc->getChildren();
-        foreach ($children as $comment) {
             $this->assertEquals('en', $comment->locale);
             $this->assertEquals('This is a great article', $comment->getText());
         }
@@ -436,16 +310,6 @@ class DocumentManagerTest extends PHPCRFunctionalTestCase
             $this->assertEquals('en', $comment->locale);
             $this->assertEquals('This is a great article', $comment->getText());
         }
-
-        $this->dm->clear();
-
-        $parent = $this->dm->findTranslation($this->class, '/functional/' . $this->testNodeName, 'en');
-
-        $metadata = $this->dm->getClassMetadata('Doctrine\Tests\Models\Translation\Comment');
-        $metadata->mappings['parent']['cascade'] = ClassMetadata::CASCADE_TRANSLATION;
-
-        $this->dm->findTranslation(null, '/functional/' . $this->testNodeName . '/new-comment', 'fr');
-        $this->assertEquals('fr', $parent->locale);
     }
 
     public function testFindByUUID()
